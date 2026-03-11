@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>SUBWAY SURF</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <link rel="stylesheet" href="./style.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet" />
 
-    <script type="importmap">
+<head>
+  <meta charset="UTF-8" />
+  <title>SUBWAY SURF</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="./style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet" />
+
+  <script type="importmap">
       {
         "imports": {
           "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
@@ -15,50 +16,46 @@
         }
       }
     </script>
-  </head>
+</head>
 
-  <body>
-    <div id="startScreen">
-      <div class="hero">
-        <div class="tagline">DASH. DODGE. ESCAPE.</div>
-        <h1>SUBWAY SURF</h1>
-        <p>Ride the rails. Grab the gold. Don't get busted.</p>
-        <button id="startBtn" class="primary-btn">PLAY</button>
-      </div>
+<body>
+  <div id="startScreen">
+    <div class="hero">
+      <div class="tagline">DASH. DODGE. ESCAPE.</div>
+      <h1>SUBWAY SURF</h1>
+      <p>Ride the rails. Grab the gold. Don't get busted.</p>
+      <button id="startBtn" class="primary-btn">PLAY</button>
     </div>
+  </div>
 
-    <div id="countdown" class="hidden">READY</div>
+  <div id="countdown" class="hidden">READY</div>
 
-    <div id="hud" class="hidden">
-      <div class="hudRow">
-        <div class="badge"><span class="k">SCORE</span><span id="score" class="v">0</span></div>
-        <div class="badge"><span class="k">GOLD</span><span id="coins" class="v">0</span></div>
-        <div class="badge"><span class="k">BEST</span><span id="best" class="v">0</span></div>
+  <div id="hud" class="hidden">
+    <div class="hudRow">
+      <div class="badge"><span class="k">SCORE</span><span id="score" class="v">0</span></div>
+      <div class="badge"><span class="k">GOLD</span><span id="coins" class="v">0</span></div>
+      <div class="badge"><span class="k">BEST</span><span id="best" class="v">0</span></div>
 
-        <button id="muteBtn" class="hudBtn" type="button">MUTE</button>
-      </div>
-      <div class="hint">A/D to move • SPACE/W to jump • SHIFT/S/DOWN to slide</div>
+      <button id="muteBtn" class="hudBtn" type="button">MUTE</button>
     </div>
+    <div class="hint">A/D to move • SPACE/W to jump • SHIFT/S/DOWN to slide</div>
+  </div>
 
-    <div id="mobileControls" class="hidden">
-      <button class="mBtn" id="leftBtn">◀</button>
-      <button class="mBtn" id="jumpBtn">▲</button>
-      <button class="mBtn" id="slideBtn">▼</button>
-      <button class="mBtn" id="rightBtn">▶</button>
+  <!-- Mobile swipes are handled in JavaScript; physical buttons removed -->
+
+  <div id="gameOver" class="hidden">
+    <div class="panel">
+      <div class="title">BUSTED!</div>
+      <div class="subtitle">Final Score: <span id="finalScore">0</span></div>
+      <div class="subtitle2">Top Run: <span id="finalBest">0</span></div>
+      <button id="restartBtn" class="primary-btn">PLAY AGAIN</button>
     </div>
+  </div>
 
-    <div id="gameOver" class="hidden">
-      <div class="panel">
-        <div class="title">BUSTED!</div>
-        <div class="subtitle">Final Score: <span id="finalScore">0</span></div>
-        <div class="subtitle2">Top Run: <span id="finalBest">0</span></div>
-        <button id="restartBtn" class="primary-btn">PLAY AGAIN</button>
-      </div>
-    </div>
+  <div id="screenFx"></div>
+  <div id="fxFlash"></div>
 
-    <div id="screenFx"></div>
-    <div id="fxFlash"></div>
+  <script type="module" src="./main.js"></script>
+</body>
 
-    <script type="module" src="./main.js"></script>
-  </body>
 </html>

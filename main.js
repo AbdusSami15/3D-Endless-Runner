@@ -164,6 +164,8 @@ let shakeIntensity = 0;
 
 let speedLinesMesh = null;
 let speedLinesMat = null;
+let touchStartX = 0;
+let touchStartY = 0;
 
 let slideEndsAt = 0;
 let slideCooldownUntil = 0;
@@ -1042,10 +1044,7 @@ function setupUI() {
 
   if (ui.muteBtn) ui.muteBtn.addEventListener("click", () => setMuted(!muted));
 
-  tap(ui.leftBtn, () => changeLane(-1));
-  tap(ui.rightBtn, () => changeLane(1));
-  tap(ui.jumpBtn, jump);
-  tap(ui.slideBtn, slide);
+  // Legacy button controls removed in favor of swipe detection in setupInput()
 }
 
 function startCountdown() {
@@ -1066,7 +1065,7 @@ function updateCountdown() {
     setTimeout(() => {
       ui.countdown.classList.add("hidden");
       ui.hud.classList.remove("hidden");
-      if (window.innerWidth < 900) ui.mobile.classList.remove("hidden");
+      // mobile buttons hidden in favor of swipes
       countingDown = false;
       gameStarted = true;
 
@@ -1092,6 +1091,43 @@ function setupInput() {
     )
       slide();
   });
+
+  // SWIPE DETECTION
+  window.addEventListener("touchstart", (e) => {
+    if (gameOver) {
+      restartGame();
+      return;
+    }
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  window.addEventListener("touchend", (e) => {
+    if (!gameStarted || gameOver) return;
+
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    // Minimum swipe threshold
+    if (Math.max(absX, absY) > 30) {
+      if (absX > absY) {
+        // Horizontal
+        if (dx > 0) changeLane(1);
+        else changeLane(-1);
+      } else {
+        // Vertical
+        if (dy < 0) jump();
+        else slide();
+      }
+    }
+  }, { passive: true });
+
+  // Prevent scrolling/zooming during play
+  window.addEventListener("touchmove", (e) => {
+    if (gameStarted && !gameOver) e.preventDefault();
+  }, { passive: false });
 }
 
 /* =========================
