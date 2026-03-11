@@ -3,12 +3,10 @@
   --muted: rgba(255, 255, 255, 0.7);
   --stroke: rgba(255, 255, 255, 0.15);
   --accent: #facc15;
-  /* Bright Subway Gold/Yellow */
   --bg: #0f172a;
   --glass: rgba(0, 0, 0, 0.45);
   --glass-bright: rgba(0, 0, 0, 0.6);
   --danger: #ef4444;
-  --success: #22c55e;
 }
 
 * {
@@ -22,7 +20,7 @@ body {
   margin: 0;
   background: var(--bg);
   overflow: hidden;
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: "Outfit", system-ui, sans-serif;
   color: var(--fg);
   user-select: none;
 }
@@ -35,7 +33,6 @@ canvas {
   display: none !important;
 }
 
-/* Premium Overlay */
 #screenFx {
   position: fixed;
   inset: 0;
@@ -45,17 +42,20 @@ canvas {
   box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.5);
 }
 
-/* Glassmorphism Utility */
-.glass {
-  background: var(--glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--stroke);
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+#fxFlash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.35), transparent 65%);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
 }
 
-/* Start Screen */
+#fxFlash.fxPop {
+  opacity: 1;
+}
+
 #startScreen {
   position: fixed;
   inset: 0;
@@ -118,7 +118,6 @@ canvas {
   transform: translateY(0);
 }
 
-/* Countdown */
 #countdown {
   position: fixed;
   inset: 0;
@@ -138,18 +137,15 @@ canvas {
     transform: scale(0.8);
     opacity: 0;
   }
-
   20% {
     opacity: 1;
   }
-
   100% {
     transform: scale(1.5);
     opacity: 0;
   }
 }
 
-/* HUD */
 #hud {
   position: fixed;
   top: 20px;
@@ -165,6 +161,7 @@ canvas {
 .hudRow {
   display: flex;
   gap: 12px;
+  align-items: center;
 }
 
 .badge {
@@ -199,7 +196,19 @@ canvas {
   letter-spacing: 0.5px;
 }
 
-/* Game Over */
+.hudBtn {
+  pointer-events: auto;
+  margin-left: auto;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+}
+
 #gameOver {
   position: fixed;
   inset: 0;
@@ -243,15 +252,14 @@ canvas {
   margin-bottom: 30px;
 }
 
-/* Mobile Controls */
 #mobileControls {
   position: fixed;
-  bottom: 30px;
+  bottom: 26px;
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
   z-index: 45;
 }
 
@@ -268,6 +276,7 @@ canvas {
   align-items: center;
   justify-content: center;
   transition: transform 0.1s, background 0.1s;
+  pointer-events: auto;
 }
 
 .mBtn:active {
