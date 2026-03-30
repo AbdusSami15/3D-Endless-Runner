@@ -617,9 +617,8 @@ function init() {
   pools.prop = makePool(() => {
     const pick = Math.random();
     let mesh;
-    if (pick < 0.5) {
-      mesh = new THREE.Mesh(cache.propPillarGeo, cache.propMat);
-    } else if (pick < 0.8) {
+    // Removed cylindrical propPillarGeo as requested by user
+    if (pick < 0.6) {
       mesh = new THREE.Mesh(cache.propBoxGeo, cache.propMat);
     } else {
       mesh = new THREE.Mesh(cache.propLightGeo, cache.propNeonMat);
@@ -1048,8 +1047,8 @@ function setupUI() {
 }
 
 function startCountdown() {
-  ui.start.classList.add("hidden");
-  ui.countdown.classList.remove("hidden");
+  if (ui.start) ui.start.classList.add("hidden");
+  if (ui.countdown) ui.countdown.classList.remove("hidden");
   countingDown = true;
   countdownVal = 3;
   updateCountdown();
@@ -1063,8 +1062,8 @@ function updateCountdown() {
   } else {
     ui.countdown.textContent = "GO!";
     setTimeout(() => {
-      ui.countdown.classList.add("hidden");
-      ui.hud.classList.remove("hidden");
+      if (ui.countdown) ui.countdown.classList.add("hidden");
+      if (ui.hud) ui.hud.classList.remove("hidden");
       // mobile buttons hidden in favor of swipes
       countingDown = false;
       gameStarted = true;
@@ -1172,9 +1171,9 @@ function animate() {
 
     score += dt * 7;
     syncHud();
-  } else if (!gameStarted && !countingDown && !gameOver) {
     updateTunnel(dt * 0.2);
     updateAnimations(dt);
+    updateCamera(dt);
   }
 
   if (shakeTime > 0) {
@@ -1393,14 +1392,19 @@ function updateSpawning() {
 }
 
 function spawnSegmentBarrierRush(z) {
+  // Use a random "open lane" across all 3 possibilities
   const openLane = (Math.random() * 3) | 0;
-  // Spread out the barriers more (22 units instead of 15 / 10 instead of 5)
+
+  // Create obstacles in both OTHER lanes
   for (let i = 0; i < 3; i++) {
     const lane1 = (openLane + 1) % 3;
     const lane2 = (openLane + 2) % 3;
+
+    // Offset hazards slightly for rhythm
     spawnObstacle(lane1, z - i * 22, { type: "barrier" });
     spawnObstacle(lane2, z - i * 22 - 11, { type: "hurdle" });
-    // spawn coins in the open lane
+
+    // Always provide coins in the open lane to guide the player
     spawnCoin(openLane, z - i * 22);
     spawnCoin(openLane, z - i * 22 - 11);
   }
@@ -1417,18 +1421,27 @@ function spawnSingleHurdle(z) {
 
 function spawnSegmentGate(z) {
   const openLane = (Math.random() * 3) | 0;
+  // A "Gate" now has a double-stack or more hazards in the blocked lanes
   for (let i = 0; i < 3; i++) {
-    if (i !== openLane) spawnObstacle(i, z, { type: "barrier" });
-    else for (let j = 0; j < 6; j++) spawnCoin(i, z - j * 3);
+    if (i !== openLane) {
+      spawnObstacle(i, z, { type: "barrier" });
+      // Add a barrel behind the barrier for depth
+      spawnObstacle(i, z - 10, { type: "hurdle" });
+    } else {
+      for (let j = 0; j < 8; j++) spawnCoin(i, z - j * 3);
+    }
   }
 }
 
 function spawnSegmentZigZag(z) {
   let lane = (Math.random() * 3) | 0;
-  for (let i = 0; i < 4; i++) {
-    spawnCoin(lane, z - i * 12);
-    spawnObstacle((lane + 1) % 3, z - i * 12 - 6, { type: "hurdle" });
-    lane = (lane + 1) % 3;
+  // A true 3-lane zig-zag
+  for (let i = 0; i < 6; i++) {
+    spawnCoin(lane, z - i * 15);
+    // Place hurdles in the other two lanes at different offsets
+    spawnObstacle((lane + 1) % 3, z - i * 15 - 5, { type: "hurdle" });
+    spawnObstacle((lane + 2) % 3, z - i * 15 - 10, { type: "hurdle" });
+    lane = (lane + (Math.random() > 0.5 ? 1 : 2)) % 3;
   }
 }
 
@@ -1446,11 +1459,15 @@ function spawnSegmentVault(z) {
 
 function spawnSegmentString(z) {
   const lane = (Math.random() * 3) | 0;
+  const obsLane1 = (lane + 1) % 3;
+  const obsLane2 = (lane + 2) % 3;
+
   for (let i = 0; i < 12; i++) spawnCoin(lane, z - i * 2.5);
 
-  // add a moving obstacle for variety
-  spawnObstacle((lane + 1) % 3, z - 10, { type: "mover" });
-  spawnObstacle((lane + 2) % 3, z - 22, { type: "train" });
+  // Add more hazards to the side lanes during the coin run
+  spawnObstacle(obsLane1, z - 8, { type: "mover" });
+  spawnObstacle(obsLane2, z - 18, { type: "barrier" });
+  spawnObstacle(obsLane1, z - 28, { type: "hurdle" });
 }
 
 function spawnObstacle(laneIndex, z, opt) {
@@ -1778,8 +1795,8 @@ function endGame() {
     if (ui.finalBest) ui.finalBest.textContent = String(best);
     if (ui.best) ui.best.textContent = String(best);
     if (ui.go) ui.go.classList.remove("hidden");
-    ui.hud.classList.add("hidden");
-    ui.mobile.classList.add("hidden");
+    if (ui.hud) ui.hud.classList.add("hidden");
+    if (ui.mobile) ui.mobile.classList.add("hidden");
   }, 500);
 }
 
@@ -1789,10 +1806,10 @@ function restartGame() {
   countingDown = false;
 
   if (ui.go) ui.go.classList.add("hidden");
-  ui.start.classList.remove("hidden");
-  ui.countdown.classList.add("hidden");
-  ui.hud.classList.add("hidden");
-  ui.mobile.classList.add("hidden");
+  if (ui.start) ui.start.classList.add("hidden");
+  if (ui.countdown) ui.countdown.classList.add("hidden");
+  if (ui.hud) ui.hud.classList.add("hidden");
+  if (ui.mobile) ui.mobile.classList.add("hidden");
 
   speed = CFG.startSpeed;
   targetLane = 1;
@@ -1815,6 +1832,10 @@ function restartGame() {
 
   playerRoot.position.set(0, 0, 0);
   if (playerVisual) playerVisual.rotation.y = 0;
+
+  // Reset Camera
+  camera.position.set(0, CFG.cameraY, CFG.cameraZ);
+  camera.lookAt(0, CFG.camLookY, CFG.camLookZ);
 
   // clear arrays (pooled release)
   for (const o of obstacles) {
@@ -1855,6 +1876,9 @@ function restartGame() {
 
   applyTheme(0);
   syncHud();
+
+  // Start new game immediately
+  startCountdown();
 }
 
 function syncHud() {
