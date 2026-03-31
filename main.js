@@ -11,55 +11,66 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 ========================= */
 const CFG = {
   lanes: [-2.5, 0, 2.5],
-  laneLerp: 0.18,
+  laneLerp: 0.22,
 
-  startSpeed: 12.5,
-  maxSpeed: 28,
-  speedRamp: 0.06,
+  startSpeed: 14.0,
+  maxSpeed: 38,
+  speedRamp: 0.16,
 
-  jumpVelocity: 15.8,
-  gravity: 28.5,
+  jumpVelocity: 16.5,
+  gravity: 34.0,
 
   // Slide
-  slideDuration: 0.55,
-  slideCooldown: 0.12,
+  slideDuration: 0.52,
+  slideCooldown: 0.10,
 
-  // Spawning (Balanced Density)
-  spawnIntervalBase: 65,
-  spawnIntervalVariance: 45,
-  spawnZ: -110,
+  // Spawning (Professional Flow)
+  spawnIntervalBase: 22,
+  spawnIntervalVariance: 8,
+  spawnZ: -45,
 
   // Fairness
   maxObstaclesPerWave: 2,
+  maxObstaclesPerCluster: 4,
+  clusterChanceAtMaxSpeed: 0.65,
+  clusterRowSpacingMin: 6.5,
+  clusterRowSpacingMax: 10.5,
   obstacleY: 0.68,
   coinY: 1.12,
 
   // Pickup / collisions
-  coinPickupRadius: 2.2,
-  obstacleHitPadding: 0.08,
+  coinPickupRadius: 2.4,
+  obstacleHitPadding: 0.12,
 
   // Near miss (juicy)
-  nearMissDist: 1.1,
-  nearMissScore: 35,
-  nearMissCooldown: 0.45,
+  nearMissDist: 1.2,
+  nearMissScore: 50,
+  nearMissCooldown: 0.40,
 
   // Magnet
-  magnetChance: 0.14,
-  magnetDuration: 7,
-  magnetRadius: 5.8,
-  magnetPullSpeed: 24,
+  magnetChance: 0.16,
+  magnetDuration: 8,
+  magnetRadius: 6.5,
+  magnetPullSpeed: 26,
 
   // World
-  despawnZ: 20,
+  despawnZ: 25,
+
+  // Audio mix
+  bgmVolume: 0.28,
+  jumpSfxVolume: 0.95,
+  toneGainMult: 1.85,
+  bgmDuckTo: 0.12,
+  bgmDuckMs: 180,
 
   // Look
-  exposure: 1.55,
-  cameraZ: 9.7,
-  cameraY: 5.0,
-  camLag: 0.10,
-  camLookZ: -6.2,
-  camLookY: 1.1,
-  camBob: 0.08,
+  exposure: 1.3,
+  cameraZ: 10.5,
+  cameraY: 5.5,
+  camLag: 0.08,
+  camLookZ: -8.0,
+  camLookY: 1.2,
+  camBob: 0.07,
 
   // Cinematic camera
   baseFov: 72,
@@ -71,9 +82,9 @@ const CFG = {
   fogColor: 0x060b14,
 
   // Bloom
-  bloomStrength: 0.95,
+  bloomStrength: 0.4,
   bloomRadius: 0.35,
-  bloomThreshold: 0.08,
+  bloomThreshold: 0.3,
 
   // Tunnel / Environment
   tunnelModelPath: "models/tunnel.glb",
@@ -100,16 +111,8 @@ const CFG = {
   coinScale: 1.1,
   coinModelPath: "models/coin.glb",
 
-  propsDespawnZ: 24,
-
-  // Side props (procedural)
-  sidePropsSpawnEveryDist: 28,
-  sidePropsSpawnJitter: 12,
-  sidePropsZ: -120,
-  sidePropsYMin: 0.4,
-  sidePropsYMax: 3.8,
-  sidePropsX: 6.2, // approx wall distance
-  sidePropsMaxAlive: 70,
+  coinScale: 1.1,
+  coinModelPath: "models/coin.glb",
 };
 
 /* =========================
@@ -141,7 +144,6 @@ let lastThemeIndex = 0;
 let targetThemeIndex = 0;
 let themeLerpFactor = 1.0; // 1.0 means fully at targetThemeIndex
 
-let envProps = [];
 let particles = [];
 
 let score = 0;
@@ -150,8 +152,8 @@ let coinCount = 0;
 
 let magnetEndTime = 0;
 let distMoved = 0;
-let lastSpawnDist = -20;
-let nextSpawnInterval = 70;
+let lastSpawnDist = -65;
+let nextSpawnInterval = 35;
 
 let gameOver = false;
 let gameStarted = false;
@@ -172,9 +174,8 @@ let slideCooldownUntil = 0;
 let wasSliding = false;
 
 let lastNearMissAt = -999;
-
-let lastSidePropSpawnDist = 0;
-let nextSidePropInterval = CFG.sidePropsSpawnEveryDist;
+let laneHistory = [0, 1, 2]; // Shuffle Bag
+let lastLane = 1;
 
 // Models (optional)
 let barrierModel = null;
@@ -264,23 +265,6 @@ const cache = {
     emissiveIntensity: 0.55,
   }),
 
-  // Side props
-  propBoxGeo: new THREE.BoxGeometry(0.6, 1.6, 0.6),
-  propPillarGeo: new THREE.CylinderGeometry(0.25, 0.35, 2.8, 10),
-  propLightGeo: new THREE.BoxGeometry(0.5, 0.18, 1.4),
-  propMat: new THREE.MeshStandardMaterial({
-    color: 0x475569,
-    roughness: 0.8,
-    metalness: 0.05,
-  }),
-  propNeonMat: new THREE.MeshStandardMaterial({
-    color: 0x22d3ee,
-    roughness: 0.25,
-    metalness: 0.35,
-    emissive: new THREE.Color(0x22d3ee),
-    emissiveIntensity: 1.8,
-  }),
-
   particleGeo: new THREE.SphereGeometry(0.08, 4, 4),
   particleMat: new THREE.MeshBasicMaterial({
     color: 0xffd35a,
@@ -329,7 +313,6 @@ const pools = {
   train: null,
   barrier: null,
   magnet: null,
-  prop: null,
   particle: null,
   explosion: null,
 };
@@ -339,6 +322,13 @@ const pools = {
 ========================= */
 let audioCtx = null;
 let muted = false;
+let bgm = null;
+let bgmReady = false;
+let jumpSfx = null;
+let jumpSfxReady = false;
+let blastSfx = null;
+let blastSfxReady = false;
+let bgmDuckUntil = 0;
 
 function ensureAudio() {
   if (audioCtx) return;
@@ -349,14 +339,123 @@ function ensureAudio() {
   }
 }
 
+function ensureBgm() {
+  if (bgmReady) return;
+  try {
+    bgm = new Audio("sounds/gameplaySound.mp3");
+    bgm.loop = true;
+    bgm.preload = "auto";
+    bgm.volume = CFG.bgmVolume;
+    bgm.muted = muted;
+    bgmReady = true;
+  } catch {
+    bgm = null;
+    bgmReady = false;
+  }
+}
+
+function ensureJumpSfx() {
+  if (jumpSfxReady) return;
+  try {
+    jumpSfx = new Audio("sounds/jump.mp3");
+    jumpSfx.preload = "auto";
+    jumpSfx.volume = CFG.jumpSfxVolume;
+    jumpSfx.muted = muted;
+    jumpSfxReady = true;
+  } catch {
+    jumpSfx = null;
+    jumpSfxReady = false;
+  }
+}
+
+function ensureBlastSfx() {
+  if (blastSfxReady) return;
+  try {
+    blastSfx = new Audio("sounds/blast.mp3");
+    blastSfx.preload = "auto";
+    blastSfx.volume = 0.95;
+    blastSfx.muted = muted;
+    blastSfxReady = true;
+  } catch {
+    blastSfx = null;
+    blastSfxReady = false;
+  }
+}
+
+function duckBgm() {
+  if (muted) return;
+  if (!bgmReady || !bgm) return;
+  const now = performance.now();
+  bgmDuckUntil = Math.max(bgmDuckUntil, now + CFG.bgmDuckMs);
+  bgm.volume = Math.min(bgm.volume, CFG.bgmDuckTo);
+}
+
+function tickBgmDuck() {
+  if (!bgmReady || !bgm) return;
+  if (muted) return;
+  const now = performance.now();
+  if (now < bgmDuckUntil) return;
+  // Smooth return to normal volume
+  bgm.volume = Math.min(CFG.bgmVolume, bgm.volume + 0.02);
+}
+
+function playBgm() {
+  if (muted) return;
+  if (!bgmReady || !bgm) return;
+  // Autoplay policies: this should be called from a user gesture (start/restart)
+  const p = bgm.play();
+  if (p && typeof p.catch === "function") p.catch(() => { });
+}
+
+function playJumpSfx() {
+  if (muted) return;
+  duckBgm();
+  if (!jumpSfxReady || !jumpSfx) {
+    // fallback (original synth)
+    playTone(420, 0.10, "sawtooth", 0.065);
+    return;
+  }
+
+  // allow rapid re-trigger
+  try {
+    jumpSfx.currentTime = 0;
+  } catch { }
+  const p = jumpSfx.play();
+  if (p && typeof p.catch === "function") p.catch(() => { });
+}
+
+function playBlastSfx() {
+  if (muted) return;
+  duckBgm();
+  if (!blastSfxReady || !blastSfx) return;
+  try {
+    blastSfx.currentTime = 0;
+  } catch { }
+  const p = blastSfx.play();
+  if (p && typeof p.catch === "function") p.catch(() => { });
+}
+
+function stopBgm() {
+  if (!bgm) return;
+  bgm.pause();
+  // keep currentTime so restart feels continuous; comment out next line if you prefer rewind
+  // bgm.currentTime = 0;
+}
+
 function setMuted(v) {
   muted = !!v;
   if (ui.muteBtn) ui.muteBtn.textContent = muted ? "UNMUTE" : "MUTE";
+  if (bgm) bgm.muted = muted;
+  if (jumpSfx) jumpSfx.muted = muted;
+  if (blastSfx) blastSfx.muted = muted;
+  if (muted) stopBgm();
+  else playBgm();
 }
 
 function playTone(freq, dur, type = "sine", gain = 0.05) {
   if (muted) return;
   if (!audioCtx) return;
+  duckBgm();
 
   const t0 = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
@@ -364,8 +463,9 @@ function playTone(freq, dur, type = "sine", gain = 0.05) {
   osc.type = type;
   osc.frequency.setValueAtTime(freq, t0);
 
+  const finalGain = Math.min(0.25, gain * CFG.toneGainMult);
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(finalGain, t0 + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
 
   osc.connect(g);
@@ -377,21 +477,21 @@ function playTone(freq, dur, type = "sine", gain = 0.05) {
 
 const SFX = {
   coin() {
-    playTone(880, 0.08, "square", 0.035);
-    playTone(1320, 0.06, "square", 0.02);
+    playTone(880, 0.085, "square", 0.065);
+    playTone(1320, 0.06, "square", 0.045);
   },
   jump() {
-    playTone(420, 0.10, "sawtooth", 0.04);
+    playJumpSfx();
   },
   slide() {
-    playTone(220, 0.10, "triangle", 0.05);
+    playTone(220, 0.11, "triangle", 0.075);
   },
   hit() {
-    playTone(90, 0.18, "sawtooth", 0.08);
+    playTone(90, 0.20, "sawtooth", 0.11);
   },
   power() {
-    playTone(520, 0.10, "sine", 0.05);
-    playTone(780, 0.12, "sine", 0.04);
+    playTone(520, 0.10, "sine", 0.07);
+    playTone(780, 0.12, "sine", 0.06);
   },
 };
 
@@ -404,9 +504,9 @@ const THEMES = [
     fogColor: 0x060b14,
     fogNear: 16,
     fogFar: 560,
-    exposure: 1.55,
-    bloomStrength: 1.05,
-    bloomThreshold: 0.07,
+    exposure: 1.25,
+    bloomStrength: 0.5,
+    bloomThreshold: 0.25,
     bloomRadius: 0.38,
     rim: 0x7fc8ff,
     neon: 0x22d3ee,
@@ -416,9 +516,9 @@ const THEMES = [
     fogColor: 0x0b0710,
     fogNear: 18,
     fogFar: 520,
-    exposure: 1.7,
-    bloomStrength: 0.85,
-    bloomThreshold: 0.12,
+    exposure: 1.30,
+    bloomStrength: 0.45,
+    bloomThreshold: 0.28,
     bloomRadius: 0.32,
     rim: 0xffb703,
     neon: 0xfacc15,
@@ -428,9 +528,9 @@ const THEMES = [
     fogColor: 0x05090f,
     fogNear: 20,
     fogFar: 650,
-    exposure: 1.45,
-    bloomStrength: 0.9,
-    bloomThreshold: 0.09,
+    exposure: 1.2,
+    bloomStrength: 0.42,
+    bloomThreshold: 0.3,
     bloomRadius: 0.33,
     rim: 0x8ecae6,
     neon: 0x60a5fa,
@@ -440,9 +540,9 @@ const THEMES = [
     fogColor: 0x2c1b0e,
     fogNear: 15,
     fogFar: 480,
-    exposure: 1.30,
-    bloomStrength: 0.35,
-    bloomThreshold: 0.15,
+    exposure: 1.22,
+    bloomStrength: 0.3,
+    bloomThreshold: 0.32,
     bloomRadius: 0.28,
     rim: 0xffd166,
     neon: 0xfbbf24,
@@ -476,10 +576,6 @@ function applyTheme(idx) {
   }
 
   if (rimLight) rimLight.color = new THREE.Color(th.rim);
-
-  // Update neon props material emissive
-  cache.propNeonMat.color = new THREE.Color(th.neon);
-  cache.propNeonMat.emissive = new THREE.Color(th.neon);
 }
 
 /** Smoothly interpolate between themes over time */
@@ -562,20 +658,20 @@ function init() {
   );
   composer.addPass(bloomPass);
 
-  // Lighting (store refs for theme changes)
-  ambientLight = new THREE.AmbientLight(0xffffff, 0.28);
-  scene.add(ambientLight);
-
-  hemiLight = new THREE.HemisphereLight(0xbfd9ff, 0x0b0f1a, 1.15);
-  scene.add(hemiLight);
-
-  keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
-  keyLight.position.set(7, 10, 6);
-  scene.add(keyLight);
-
-  rimLight = new THREE.DirectionalLight(0x7fc8ff, 0.95);
+  rimLight = new THREE.DirectionalLight(0x7fc8ff, 0.85);
   rimLight.position.set(-9, 4, 2);
   scene.add(rimLight);
+
+  // Lighting (store refs for theme changes)
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+  scene.add(ambientLight);
+
+  hemiLight = new THREE.HemisphereLight(0xbfd9ff, 0x0b0f1a, 0.9);
+  scene.add(hemiLight);
+
+  keyLight = new THREE.DirectionalLight(0xffffff, 1.65);
+  keyLight.position.set(7, 10, 6);
+  scene.add(keyLight);
 
   // Pools (procedural)
   pools.coin = makePool(() => {
@@ -613,20 +709,6 @@ function init() {
     scene.add(o);
     return o;
   }, 12);
-
-  pools.prop = makePool(() => {
-    const pick = Math.random();
-    let mesh;
-    // Removed cylindrical propPillarGeo as requested by user
-    if (pick < 0.6) {
-      mesh = new THREE.Mesh(cache.propBoxGeo, cache.propMat);
-    } else {
-      mesh = new THREE.Mesh(cache.propLightGeo, cache.propNeonMat);
-    }
-    mesh.visible = false;
-    scene.add(mesh);
-    return mesh;
-  }, 60);
 
   pools.particle = makePool(() => {
     const p = new THREE.Mesh(cache.particleGeo, cache.particleMat.clone());
@@ -1029,15 +1111,11 @@ function setupUI() {
 
   if (ui.startBtn)
     ui.startBtn.addEventListener("click", () => {
-      ensureAudio();
-      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
       startCountdown();
     });
 
   if (ui.restart)
     ui.restart.addEventListener("click", () => {
-      ensureAudio();
-      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
       restartGame();
     });
 
@@ -1047,6 +1125,16 @@ function setupUI() {
 }
 
 function startCountdown() {
+  // Ensure audio is unlocked via user gesture (click / keydown)
+  ensureAudio();
+  ensureBgm();
+  ensureJumpSfx();
+  ensureBlastSfx();
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+
+  // Requirement: countdown SFX first, then gameplay music starts on GO
+  stopBgm();
+
   if (ui.start) ui.start.classList.add("hidden");
   if (ui.countdown) ui.countdown.classList.remove("hidden");
   countingDown = true;
@@ -1057,10 +1145,23 @@ function startCountdown() {
 function updateCountdown() {
   if (countdownVal > 0) {
     ui.countdown.textContent = countdownVal;
+    ui.countdown.classList.remove("counting-anim");
+    void ui.countdown.offsetWidth;
+    ui.countdown.classList.add("counting-anim");
+    // 3-2-1 tick
+    const freq = countdownVal === 3 ? 440 : countdownVal === 2 ? 494 : 523;
+    playTone(freq, 0.09, "square", 0.05);
     countdownVal--;
     setTimeout(updateCountdown, 1000);
   } else {
     ui.countdown.textContent = "GO!";
+    ui.countdown.classList.remove("counting-anim");
+    void ui.countdown.offsetWidth;
+    ui.countdown.classList.add("counting-anim");
+    // GO cue (little chord)
+    playTone(659, 0.12, "sawtooth", 0.06);
+    playTone(880, 0.14, "sawtooth", 0.05);
+
     setTimeout(() => {
       if (ui.countdown) ui.countdown.classList.add("hidden");
       if (ui.hud) ui.hud.classList.remove("hidden");
@@ -1069,6 +1170,9 @@ function updateCountdown() {
       gameStarted = true;
 
       if (playerVisual) playerVisual.rotation.y = Math.PI;
+
+      // Start BGM after countdown finishes
+      playBgm();
     }, 650);
   }
 }
@@ -1143,6 +1247,7 @@ function animate() {
   t += dt;
 
   tickTheme(dt);
+  tickBgmDuck();
 
   if (gameStarted && !gameOver) {
     speed = Math.min(speed + CFG.speedRamp * dt, CFG.maxSpeed);
@@ -1163,17 +1268,12 @@ function animate() {
     }
 
     updateSpawning();
-    updateSidePropsSpawning();
     updateObstacles(dz, dt);
     updateCoins(dz, dt);
     updateMagnets(dz, dt);
-    updateEnvProps(dz);
 
     score += dt * 7;
     syncHud();
-    updateTunnel(dt * 0.2);
-    updateAnimations(dt);
-    updateCamera(dt);
   }
 
   if (shakeTime > 0) {
@@ -1217,9 +1317,10 @@ function updatePlayer(dt) {
       velY = 0;
       grounded = true;
       // landing juice
-      shakeTime = Math.max(shakeTime, 0.08);
-      shakeIntensity = Math.max(shakeIntensity, 0.22);
+      shakeTime = 0.12;
+      shakeIntensity = 0.28;
       spawnLandingDust(playerRoot.position);
+      SFX.slide(); // subtle thump sound? actually slide tone is okay for thud
     }
   }
 }
@@ -1365,110 +1466,161 @@ function updateTunnel(dz) {
 ========================= */
 function updateSpawning() {
   if (distMoved - lastSpawnDist < nextSpawnInterval) return;
+
   lastSpawnDist = distMoved;
 
-  // Scale interval with speed to keep a consistent rhythmic "beat"
-  // As speed increases, we need slightly more distance between waves to keep them humanly Reactable
-  const speedFactor = THREE.MathUtils.clamp((speed - CFG.startSpeed) / (CFG.maxSpeed - CFG.startSpeed), 0, 1);
+  // Scale interval slightly with speed (rhythmic beat)
+  const speedFactor = THREE.MathUtils.clamp(
+    (speed - CFG.startSpeed) / (CFG.maxSpeed - CFG.startSpeed),
+    0,
+    1
+  );
   nextSpawnInterval =
-    CFG.spawnIntervalBase + (speedFactor * 15) + Math.random() * CFG.spawnIntervalVariance;
+    CFG.spawnIntervalBase +
+    speedFactor * 8 +
+    Math.random() * CFG.spawnIntervalVariance;
 
   const z = CFG.spawnZ;
-  const rand = Math.random();
 
-  // Patterns
-  if (rand < 0.15) spawnSingleHurdle(z);
-  else if (rand < 0.30) spawnSegmentGate(z);
-  else if (rand < 0.45) spawnSegmentZigZag(z);
-  else if (rand < 0.60) spawnSegmentVault(z);
-  else if (rand < 0.80) spawnSegmentBarrierRush(z);
-  else spawnSegmentString(z);
+  // Difficulty: speed increases AND clusters appear more often.
+  // Cluster = multiple rows close together; total obstacles in a cluster never exceeds CFG.maxObstaclesPerCluster.
+  const wantCluster =
+    Math.random() <
+    THREE.MathUtils.lerp(
+      0.12,
+      CFG.clusterChanceAtMaxSpeed,
+      speedFactor
+    );
+
+  if (wantCluster) spawnObstacleCluster(z, speedFactor);
+  else spawnSingleWave(z, speedFactor);
 
   // Powerups (Magnet)
   if (Math.random() < CFG.magnetChance) {
     const lane = (Math.random() * 3) | 0;
-    spawnMagnet(lane, z - 25);
+    spawnMagnet(lane, z - 15);
   }
 }
 
-function spawnSegmentBarrierRush(z) {
-  // Use a random "open lane" across all 3 possibilities
-  const openLane = (Math.random() * 3) | 0;
+function pickHazardType(speedFactor) {
+  // Keep early game gentle, add tougher types later.
+  let type = "hurdle";
+  if (score > 350 && Math.random() < 0.25 + speedFactor * 0.15) type = "barrier";
+  if (score > 1200 && Math.random() < 0.12 + speedFactor * 0.10) type = "lowGate";
+  return type;
+}
 
-  // Create obstacles in both OTHER lanes
+function spawnSingleWave(z, speedFactor) {
+  // Always leave one lane open (and seed coins there).
+  const openLane = pickBalancedLane();
+  spawnCoinTrail(openLane, z);
+
+  // How many hazards this wave: 1-2 early, up to 2 at high speed (3 lanes total so keep solvable).
+  const maxHazards = score > 700 ? 2 : score > 120 ? 2 : 1;
+  const hazardCount = 1 + ((Math.random() * maxHazards) | 0);
+
+  const lanes = [0, 1, 2];
+  shuffle(lanes);
+
+  let placed = 0;
   for (let i = 0; i < 3; i++) {
-    const lane1 = (openLane + 1) % 3;
-    const lane2 = (openLane + 2) % 3;
-
-    // Offset hazards slightly for rhythm
-    spawnObstacle(lane1, z - i * 22, { type: "barrier" });
-    spawnObstacle(lane2, z - i * 22 - 11, { type: "hurdle" });
-
-    // Always provide coins in the open lane to guide the player
-    spawnCoin(openLane, z - i * 22);
-    spawnCoin(openLane, z - i * 22 - 11);
+    const lane = lanes[i];
+    if (lane === openLane) continue;
+    if (placed >= hazardCount) break;
+    const jitter = (Math.random() - 0.5) * 5.5;
+    spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor) });
+    placed++;
   }
 }
 
-function spawnSingleHurdle(z) {
-  const lane = (Math.random() * 3) | 0;
-  spawnObstacle(lane, z, { type: "hurdle" });
-  for (let i = 0; i < 3; i++) {
-    if (i === lane) continue;
-    if (Math.random() > 0.5) for (let j = 0; j < 4; j++) spawnCoin(i, z - j * 4);
+function spawnObstacleCluster(baseZ, speedFactor) {
+  // Total obstacles across rows is capped at 4.
+  let remaining = CFG.maxObstaclesPerCluster;
+  let row = 0;
+  let z = baseZ;
+
+  // Keep the first row generous: coins + 1-2 hazards.
+  while (remaining > 0 && row < 4) {
+    const openLane = pickBalancedLane();
+    if (row === 0) spawnCoinTrail(openLane, z);
+
+    // Later rows can be tighter, but still leave an escape lane.
+    const maxThisRow = row === 0 ? 2 : 2;
+    const minThisRow = 1;
+    const hazardsThisRow = Math.min(
+      remaining,
+      minThisRow + ((Math.random() * (maxThisRow - minThisRow + 1)) | 0)
+    );
+
+    const lanes = [0, 1, 2];
+    shuffle(lanes);
+    let placed = 0;
+    for (let i = 0; i < 3; i++) {
+      const lane = lanes[i];
+      if (lane === openLane) continue;
+      if (placed >= hazardsThisRow) break;
+      const jitter = (Math.random() - 0.5) * 3.0;
+      spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor) });
+      placed++;
+      remaining--;
+      if (remaining <= 0) break;
+    }
+
+    // Step back for next row in the cluster (spacing shrinks as speed rises)
+    row++;
+    const spacing = THREE.MathUtils.lerp(
+      CFG.clusterRowSpacingMax,
+      CFG.clusterRowSpacingMin,
+      speedFactor
+    );
+    z -= spacing;
   }
 }
 
-function spawnSegmentGate(z) {
-  const openLane = (Math.random() * 3) | 0;
-  // A "Gate" now has a double-stack or more hazards in the blocked lanes
-  for (let i = 0; i < 3; i++) {
-    if (i !== openLane) {
-      spawnObstacle(i, z, { type: "barrier" });
-      // Add a barrel behind the barrier for depth
-      spawnObstacle(i, z - 10, { type: "hurdle" });
-    } else {
-      for (let j = 0; j < 8; j++) spawnCoin(i, z - j * 3);
+/** Professional Lane Balancing (Shuffle Bag style) */
+function pickBalancedLane() {
+  if (laneHistory.length === 0) {
+    const lastDrawn = lastLane;
+    laneHistory = [0, 1, 2];
+    shuffle(laneHistory);
+    // Anti-repeat: ensure the first of new bag isn't the last of old bag
+    if (laneHistory[laneHistory.length - 1] === lastDrawn) {
+      // Swap the last element with another
+      [laneHistory[laneHistory.length - 1], laneHistory[0]] = [
+        laneHistory[0],
+        laneHistory[laneHistory.length - 1],
+      ];
     }
   }
+  const lane = laneHistory.pop();
+  lastLane = lane;
+  return lane;
 }
 
-function spawnSegmentZigZag(z) {
-  let lane = (Math.random() * 3) | 0;
-  // A true 3-lane zig-zag
-  for (let i = 0; i < 6; i++) {
-    spawnCoin(lane, z - i * 15);
-    // Place hurdles in the other two lanes at different offsets
-    spawnObstacle((lane + 1) % 3, z - i * 15 - 5, { type: "hurdle" });
-    spawnObstacle((lane + 2) % 3, z - i * 15 - 10, { type: "hurdle" });
-    lane = (lane + (Math.random() > 0.5 ? 1 : 2)) % 3;
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [arr[i], arr[arr[j]]] = [arr[j], arr[i]];
   }
 }
 
-function spawnSegmentVault(z) {
-  const lane = (Math.random() * 3) | 0;
-  // vault obstacle sometimes low -> slide
-  spawnObstacle(lane, z, { type: Math.random() < 0.55 ? "lowGate" : "hurdle" });
+function spawnCoinTrail(laneIndex, z) {
+  const count = 3 + ((Math.random() * 4) | 0);
+  let currentLane = laneIndex;
 
-  for (let i = 0; i < 7; i++) {
-    const r = i / 6;
-    const y = Math.sin(r * Math.PI) * 3.5 + CFG.coinY;
-    spawnCoin(lane, z - i * 3, y);
+  for (let i = 0; i < count; i++) {
+    // Professional Weaving Trail (20% chance to jump lanes mid-trail)
+    if (i > 1 && Math.random() < 0.2 && count > 4) {
+      const dir = Math.random() > 0.5 ? 1 : -1;
+      const nextLane = (currentLane + dir + 3) % 3;
+      // ensure we don't jump into a blockade next turn (rough heuristic)
+      currentLane = nextLane;
+    }
+    spawnCoin(currentLane, z - i * 4);
   }
 }
 
-function spawnSegmentString(z) {
-  const lane = (Math.random() * 3) | 0;
-  const obsLane1 = (lane + 1) % 3;
-  const obsLane2 = (lane + 2) % 3;
-
-  for (let i = 0; i < 12; i++) spawnCoin(lane, z - i * 2.5);
-
-  // Add more hazards to the side lanes during the coin run
-  spawnObstacle(obsLane1, z - 8, { type: "mover" });
-  spawnObstacle(obsLane2, z - 18, { type: "barrier" });
-  spawnObstacle(obsLane1, z - 28, { type: "hurdle" });
-}
+/* Removed old multi-obstacle segment functions as they caused clumping */
 
 function spawnObstacle(laneIndex, z, opt) {
   const type = opt?.type || "hurdle";
@@ -1498,36 +1650,28 @@ function spawnObstacle(laneIndex, z, opt) {
     // not used; coins are separate
   }
 
-  // Procedural fallback (pooled) - ONLY for types with no specialized models
+  // Procedural fallback (pooled)
   if (!obj) {
-    if (type === "barrier") {
+    if (type === "lowGate") {
       obj = pools.barrier.acquire();
-      y = 0.4;
-    } else if (type === "lowGate") {
-      obj = pools.barrier.acquire();
-      y = 0.9;
-      obj.scale.set(1.0, 0.55, 1.0);
+      y = 1.0;
+      obj.scale.set(1.0, 0.45, 1.0);
       obj.userData.lowGate = true;
-    } else {
-      // Default hurdle fallback using a grey barrier look instead of a red/blue box
+    } else if (type === "barrier") {
       obj = pools.barrier.acquire();
       y = 0.4;
+    } else {
+      // Default hurdle
+      obj = pools.obstacle.acquire();
+      y = CFG.obstacleY;
     }
   } else {
-    // if it's a clone model, we need to add to scene and later remove manually
     scene.add(obj);
   }
 
   obj.position.set(CFG.lanes[laneIndex], y, z);
-
   obj.userData.type = type;
   obj.userData._isModelClone = !!obj.userData._isModelClone;
-
-  if (type === "mover") {
-    obj.userData.moveAmp = 1.0 + Math.random() * 0.7;
-    obj.userData.moveSpeed = 1.2 + Math.random() * 1.2;
-    obj.userData.baseX = obj.position.x;
-  }
 
   obstacles.push(obj);
 }
@@ -1556,67 +1700,12 @@ function spawnMagnet(laneIndex, z) {
 }
 
 /* =========================
-   SIDE PROPS (procedural)
-========================= */
-function updateSidePropsSpawning() {
-  if (envProps.length > CFG.sidePropsMaxAlive) return;
-  if (distMoved - lastSidePropSpawnDist < nextSidePropInterval) return;
-
-  lastSidePropSpawnDist = distMoved;
-  nextSidePropInterval =
-    CFG.sidePropsSpawnEveryDist + (Math.random() * 2 - 1) * CFG.sidePropsSpawnJitter;
-
-  const z = CFG.sidePropsZ;
-
-  // spawn 2-4 props: left/right and sometimes ceiling neon
-  const count = 2 + ((Math.random() * 3) | 0);
-  for (let i = 0; i < count; i++) {
-    const p = pools.prop.acquire();
-
-    const side = Math.random() < 0.5 ? -1 : 1;
-    const x = side * (CFG.sidePropsX + Math.random() * 0.8);
-    const y = THREE.MathUtils.lerp(CFG.sidePropsYMin, CFG.sidePropsYMax, Math.random());
-    p.position.set(x, y, z - i * (6 + Math.random() * 10));
-
-    // rotate props to face inward sometimes
-    p.rotation.set(0, side < 0 ? Math.PI / 2 : -Math.PI / 2, 0);
-
-    // make neon “lights” more likely on ceiling
-    if (p.geometry === cache.propLightGeo) {
-      p.position.y = 5.6;
-      p.position.x = (Math.random() * 8 - 4);
-      p.rotation.set(0, 0, 0);
-    }
-
-    envProps.push(p);
-  }
-}
-
-function updateEnvProps(dz) {
-  for (let i = envProps.length - 1; i >= 0; i--) {
-    const p = envProps[i];
-    p.position.z += dz;
-
-    if (p.position.z > CFG.propsDespawnZ) {
-      pools.prop.release(p);
-      envProps.splice(i, 1);
-    }
-  }
-}
-
-/* =========================
    MOVE + COLLISION
 ========================= */
 function updateObstacles(dz, dt) {
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const o = obstacles[i];
     o.position.z += dz;
-
-    // moving obstacle
-    if (o.userData.type === "mover") {
-      const ox = o.userData.baseX + Math.sin(t * o.userData.moveSpeed) * o.userData.moveAmp;
-      o.position.x = ox;
-    }
 
     _tmpBox.setFromObject(o);
 
@@ -1639,9 +1728,6 @@ function updateObstacles(dz, dt) {
 
     if (o.position.z > CFG.despawnZ) {
       // release
-      if (o.parent && (o === pools.obstacle || o === pools.train || o === pools.barrier)) {
-        // nothing
-      }
       if (o.geometry && (o.geometry === cache.obstacleGeo || o.geometry === cache.trainGeo || o.geometry === cache.barrierGeo)) {
         // pooled mesh
         if (o.geometry === cache.trainGeo) pools.train.release(o);
@@ -1781,6 +1867,7 @@ function endGame() {
   gameOver = true;
 
   SFX.hit();
+  stopBgm();
   shakeTime = 0.45;
   shakeIntensity = 0.55;
 
@@ -1823,12 +1910,13 @@ function restartGame() {
   coinCount = 0;
   magnetEndTime = 0;
   distMoved = 0;
-  lastSpawnDist = -20;
+  lastSpawnDist = -65;
+  nextSpawnInterval = 35;
+  laneHistory = [0, 1, 2];
+  shuffle(laneHistory);
+  lastLane = 1;
 
   lastNearMissAt = -999;
-
-  lastSidePropSpawnDist = 0;
-  nextSidePropInterval = CFG.sidePropsSpawnEveryDist;
 
   playerRoot.position.set(0, 0, 0);
   if (playerVisual) playerVisual.rotation.y = 0;
@@ -1864,9 +1952,6 @@ function restartGame() {
 
   for (const m of magnets) pools.magnet.release(m);
   magnets.length = 0;
-
-  for (const p of envProps) pools.prop.release(p);
-  envProps.length = 0;
 
   for (const p of particles) {
     if (p.userData && p.userData._isExplosion) pools.explosion.release(p);
@@ -1907,10 +1992,11 @@ function hitFlash() {
 }
 
 function spawnLandingDust(pos) {
-  spawnParticles(new THREE.Vector3(pos.x, 0.2, pos.z), 0xffffff, 10, 1.0);
+  // Dust moves outward
+  spawnParticles(new THREE.Vector3(pos.x, 0.1, pos.z), 0xffffff, 14, 1.2, true);
 }
 
-function spawnParticles(pos, color, count = 14, spread = 1.0) {
+function spawnParticles(pos, color, count = 14, spread = 1.0, horizontal = false) {
   for (let i = 0; i < count; i++) {
     const p = pools.particle.acquire();
     p.material.color.setHex(color);
@@ -1918,14 +2004,14 @@ function spawnParticles(pos, color, count = 14, spread = 1.0) {
     p.position.copy(pos);
 
     const angle = Math.random() * Math.PI * 2;
-    const force = (2 + Math.random() * 4) * spread;
+    const force = (1.5 + Math.random() * 3.5) * spread;
 
-    p.userData.vel = new THREE.Vector3(
-      Math.cos(angle) * force,
-      (Math.random() * 2 + 1) * force * 0.5,
-      Math.sin(angle) * force
-    );
-    p.userData.life = 1.0;
+    const vx = Math.cos(angle) * force;
+    const vy = horizontal ? (Math.random() * 0.5) : (Math.random() * 2 + 1) * force * 0.5;
+    const vz = Math.sin(angle) * force;
+
+    p.userData.vel = new THREE.Vector3(vx, vy, vz);
+    p.userData.life = 1.0 + Math.random() * 0.5;
     p.userData._isExplosion = false;
 
     particles.push(p);
@@ -1933,6 +2019,7 @@ function spawnParticles(pos, color, count = 14, spread = 1.0) {
 }
 
 function spawnExplosion(pos) {
+  playBlastSfx();
   hitFlash();
 
   const colors = [0xff4400, 0xffaa00, 0xffcc00, 0xffffff];

@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>SUBWAY SURF</title>
+  <title>3D Endless Runner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="./style.css" />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet" />
@@ -19,36 +19,52 @@
 </head>
 
 <body>
-  <div id="startScreen">
+  <div id="startScreen" class="screen-overlay">
     <div class="hero">
-      <div class="tagline">DASH. DODGE. ESCAPE.</div>
-      <h1>SUBWAY SURF</h1>
+      <div class="tagline">Dash. Dodge. Escape.</div>
+      <h1>3D Endless Runner</h1>
       <p>Ride the rails. Grab the gold. Don't get busted.</p>
-      <button id="startBtn" class="primary-btn">PLAY</button>
+      <button id="startBtn" class="primary-btn">Play Now</button>
     </div>
   </div>
 
-  <div id="countdown" class="hidden">READY</div>
+  <div id="countdown" class="hidden">3</div>
 
   <div id="hud" class="hidden">
-    <div class="hudRow">
-      <div class="badge"><span class="k">SCORE</span><span id="score" class="v">0</span></div>
-      <div class="badge"><span class="k">GOLD</span><span id="coins" class="v">0</span></div>
-      <div class="badge"><span class="k">BEST</span><span id="best" class="v">0</span></div>
-
-      <button id="muteBtn" class="hudBtn" type="button">MUTE</button>
+    <div class="hud-group">
+      <div class="badge">
+        <span class="label">Score</span>
+        <span id="score" class="value">0</span>
+      </div>
+      <div class="badge">
+        <span class="label">Gold</span>
+        <span id="coins" class="value">0</span>
+      </div>
+      <div class="badge">
+        <span class="label">Best</span>
+        <span id="best" class="value">0</span>
+      </div>
     </div>
-    <div class="hint">A/D to move • SPACE/W to jump • SHIFT/S/DOWN to slide</div>
+
+    <div class="hud-actions">
+      <button id="muteBtn" class="icon-btn" type="button" aria-label="Mute Audio">MUTE</button>
+    </div>
   </div>
 
-  <!-- Mobile swipes are handled in JavaScript; physical buttons removed -->
-
-  <div id="gameOver" class="hidden">
+  <div id="gameOver" class="hidden screen-overlay">
     <div class="panel">
-      <div class="title">BUSTED!</div>
-      <div class="subtitle">Final Score: <span id="finalScore">0</span></div>
-      <div class="subtitle2">Top Run: <span id="finalBest">0</span></div>
-      <button id="restartBtn" class="primary-btn">PLAY AGAIN</button>
+      <h2>Busted!</h2>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">Final Score</div>
+          <div id="finalScore" class="stat-value">0</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Top Run</div>
+          <div id="finalBest" class="stat-value">0</div>
+        </div>
+      </div>
+      <button id="restartBtn" class="primary-btn">Try Again</button>
     </div>
   </div>
 
