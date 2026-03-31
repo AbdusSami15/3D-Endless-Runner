@@ -200,6 +200,7 @@ const ui = {
   go: document.getElementById("gameOver"),
   start: document.getElementById("startScreen"),
   startBtn: document.getElementById("startBtn"),
+  loading: document.getElementById("loadingOverlay"),
   countdown: document.getElementById("countdown"),
   hud: document.getElementById("hud"),
   finalScore: document.getElementById("finalScore"),
@@ -213,6 +214,31 @@ const ui = {
   fxFlash: document.getElementById("fxFlash"),
   muteBtn: document.getElementById("muteBtn"),
 };
+
+/* =========================
+   ASSET LOADING UI
+========================= */
+let pendingAssets = 0;
+let assetsReady = false;
+
+function setAssetsLoading(isLoading) {
+  if (ui.loading) ui.loading.classList.toggle("hidden", !isLoading);
+  if (ui.startBtn) ui.startBtn.disabled = isLoading;
+}
+
+function beginAsset() {
+  pendingAssets++;
+  assetsReady = false;
+  setAssetsLoading(true);
+}
+
+function endAsset() {
+  pendingAssets = Math.max(0, pendingAssets - 1);
+  if (pendingAssets === 0) {
+    assetsReady = true;
+    setAssetsLoading(false);
+  }
+}
 
 /* Collision helpers */
 const _playerBox = new THREE.Box3();
@@ -738,10 +764,14 @@ function init() {
   syncHud();
 
   applyTheme(0);
+
+  // Start in loading state until initial GLTFs settle
+  setAssetsLoading(true);
 }
 
 function loadTunnelModel() {
   // Load tunnel first as the "Master" for size
+  beginAsset();
   gltfLoader.load(CFG.tunnelModelPath, (gltf) => {
     const model = gltf.scene;
     const box = new THREE.Box3().setFromObject(model);
@@ -758,6 +788,7 @@ function loadTunnelModel() {
     envTemplates.push(tunnelProcessed);
 
     // Now load Desert City and scale it to match
+    beginAsset();
     gltfLoader.load(CFG.desertCityModelPath, (cityGltf) => {
       const cityModel = cityGltf.scene;
       const cityBox = new THREE.Box3().setFromObject(cityModel);
@@ -775,17 +806,21 @@ function loadTunnelModel() {
       tunnelReady = true;
       console.log("Both environments ready. Templates count:", envTemplates.length);
       buildTunnel();
+      endAsset();
     }, undefined, (err) => {
       console.warn("Desert City failed, using Tunnel only", err);
       tunnelReady = true;
       buildTunnel();
+      endAsset();
     });
 
+    endAsset();
   }, undefined, (err) => {
     console.error("Tunnel failed to load!", err);
     // Absolute fallback
     tunnelReady = true;
     buildProceduralTunnel();
+    endAsset();
   });
 }
 
@@ -951,6 +986,7 @@ function buildPlayer() {
   playerRoot.add(playerVisual);
 
   // optional GLB
+  beginAsset();
   gltfLoader.load(
     "models/player.glb",
     (gltf) => {
@@ -971,10 +1007,12 @@ function buildPlayer() {
           actions.idle || actions.run || mixer.clipAction(gltf.animations[0]);
         if (currentAction) currentAction.play();
       }
+      endAsset();
     },
     undefined,
     () => {
       // keep fallback visual
+      endAsset();
     }
   );
 }
@@ -983,6 +1021,7 @@ function buildPlayer() {
    OPTIONAL OBSTACLE MODELS
 ========================= */
 function loadObstacleModels() {
+  beginAsset();
   gltfLoader.load(
     CFG.barrierModelPath,
     (gltf) => {
@@ -994,11 +1033,15 @@ function loadObstacleModels() {
         }
       });
       modelsReady.barrier = true;
+      endAsset();
     },
     undefined,
-    () => { }
+    () => {
+      endAsset();
+    }
   );
 
+  beginAsset();
   gltfLoader.load(
     CFG.wetFloorModelPath,
     (gltf) => {
@@ -1010,11 +1053,15 @@ function loadObstacleModels() {
         }
       });
       modelsReady.wetFloor = true;
+      endAsset();
     },
     undefined,
-    () => { }
+    () => {
+      endAsset();
+    }
   );
 
+  beginAsset();
   gltfLoader.load(
     CFG.barrelModelPath,
     (gltf) => {
@@ -1026,11 +1073,15 @@ function loadObstacleModels() {
         }
       });
       modelsReady.barrel = true;
+      endAsset();
     },
     undefined,
-    () => { }
+    () => {
+      endAsset();
+    }
   );
 
+  beginAsset();
   gltfLoader.load(
     CFG.coinModelPath,
     (gltf) => {
@@ -1042,9 +1093,12 @@ function loadObstacleModels() {
         }
       });
       modelsReady.coin = true;
+      endAsset();
     },
     undefined,
-    () => { }
+    () => {
+      endAsset();
+    }
   );
 }
 
@@ -1920,6 +1974,23 @@ function restartGame() {
 
   playerRoot.position.set(0, 0, 0);
   if (playerVisual) playerVisual.rotation.y = 0;
+  if (playerVisual) {
+    playerVisual.scale.set(1, 1, 1);
+    playerVisual.position.set(0, 0, 0);
+  }
+
+  // Force player into idle on restart (regardless of death state)
+  if (mixer) {
+    try {
+      mixer.stopAllAction();
+    } catch { }
+  }
+  currentAction = actions.idle || actions.run || currentAction;
+  if (currentAction) {
+    try {
+      currentAction.reset().play();
+    } catch { }
+  }
 
   // Reset Camera
   camera.position.set(0, CFG.cameraY, CFG.cameraZ);
