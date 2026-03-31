@@ -35,12 +35,19 @@ const CFG = {
   clusterChanceAtMaxSpeed: 0.65,
   clusterRowSpacingMin: 6.5,
   clusterRowSpacingMax: 10.5,
+  // Prevent overlapping / wrong order (same-lane Z stacking)
+  minObstacleGapZ: 8.0,
+  // Strong guarantee: avoid ANY AABB overlaps on spawn
+  obstacleOverlapCheckWindowZ: 28,
+  obstacleSpawnMaxRetries: 8,
   obstacleY: 0.68,
   coinY: 1.12,
 
   // Pickup / collisions
   coinPickupRadius: 2.4,
   obstacleHitPadding: 0.12,
+  coinObstacleClearZ: 4.2,
+  coinTrailSpacingZ: 4.0,
 
   // Near miss (juicy)
   nearMissDist: 1.2,
@@ -158,6 +165,7 @@ let nextSpawnInterval = 35;
 let gameOver = false;
 let gameStarted = false;
 let countingDown = false;
+let paused = false;
 let countdownVal = 3;
 let t = 0;
 
@@ -176,6 +184,14 @@ let wasSliding = false;
 let lastNearMissAt = -999;
 let laneHistory = [0, 1, 2]; // Shuffle Bag
 let lastLane = 1;
+
+// Spawn spacing guard (per lane, in Z space)
+let lastObstacleZByLane = [9999, 9999, 9999];
+
+// Difficulty / pacing smoothing (avoid awkward repeats)
+let waveIndex = 0;
+let barrierCooldownWaves = 0;
+let lowGateCooldownWaves = 0;
 
 // Models (optional)
 let barrierModel = null;
@@ -203,9 +219,11 @@ const ui = {
   loading: document.getElementById("loadingOverlay"),
   countdown: document.getElementById("countdown"),
   hud: document.getElementById("hud"),
+  pause: document.getElementById("pauseOverlay"),
   finalScore: document.getElementById("finalScore"),
   finalBest: document.getElementById("finalBest"),
   restart: document.getElementById("restartBtn"),
+  resume: document.getElementById("resumeBtn"),
   leftBtn: document.getElementById("leftBtn"),
   rightBtn: document.getElementById("rightBtn"),
   jumpBtn: document.getElementById("jumpBtn"),
@@ -213,6 +231,7 @@ const ui = {
   mobile: document.getElementById("mobileControls"),
   fxFlash: document.getElementById("fxFlash"),
   muteBtn: document.getElementById("muteBtn"),
+  pauseBtn: document.getElementById("pauseBtn"),
 };
 
 /* =========================
@@ -224,6 +243,14 @@ let assetsReady = false;
 function setAssetsLoading(isLoading) {
   if (ui.loading) ui.loading.classList.toggle("hidden", !isLoading);
   if (ui.startBtn) ui.startBtn.disabled = isLoading;
+}
+
+function setPaused(v) {
+  paused = !!v;
+  if (ui.pause) ui.pause.classList.toggle("hidden", !paused);
+  if (ui.pauseBtn) ui.pauseBtn.textContent = paused ? "RESUME" : "PAUSE";
+  if (paused) stopBgm();
+  else if (gameStarted && !gameOver) playBgm();
 }
 
 function beginAsset() {
@@ -474,6 +501,9 @@ function setMuted(v) {
   if (bgm) bgm.muted = muted;
   if (jumpSfx) jumpSfx.muted = muted;
   if (blastSfx) blastSfx.muted = muted;
+  try {
+    localStorage.setItem("muted", muted ? "1" : "0");
+  } catch { }
   if (muted) stopBgm();
   else playBgm();
 }
@@ -761,6 +791,10 @@ function init() {
   window.addEventListener("resize", onResize);
 
   if (ui.best) ui.best.textContent = String(best);
+  // Persisted audio preference
+  try {
+    setMuted(localStorage.getItem("muted") === "1");
+  } catch { }
   syncHud();
 
   applyTheme(0);
@@ -1175,6 +1209,18 @@ function setupUI() {
 
   if (ui.muteBtn) ui.muteBtn.addEventListener("click", () => setMuted(!muted));
 
+  if (ui.pauseBtn)
+    ui.pauseBtn.addEventListener("click", () => {
+      if (!gameStarted || gameOver || countingDown) return;
+      setPaused(!paused);
+    });
+
+  if (ui.resume)
+    ui.resume.addEventListener("click", () => {
+      if (!gameStarted || gameOver || countingDown) return;
+      setPaused(false);
+    });
+
   // Legacy button controls removed in favor of swipe detection in setupInput()
 }
 
@@ -1233,10 +1279,17 @@ function updateCountdown() {
 
 function setupInput() {
   window.addEventListener("keydown", (e) => {
+    // Pause toggle (only while actively playing)
+    if (!countingDown && gameStarted && !gameOver && (e.key === "Escape" || e.key === "p" || e.key === "P")) {
+      e.preventDefault();
+      setPaused(!paused);
+      return;
+    }
     if (gameOver && (e.key === "Enter" || e.key === " ")) {
       restartGame();
       return;
     }
+    if (paused) return;
     if (e.key === "ArrowLeft" || e.key === "a") changeLane(-1);
     if (e.key === "ArrowRight" || e.key === "d") changeLane(1);
     if (e.key === " " || e.key === "ArrowUp" || e.key === "w") jump();
@@ -1260,7 +1313,7 @@ function setupInput() {
   }, { passive: true });
 
   window.addEventListener("touchend", (e) => {
-    if (!gameStarted || gameOver) return;
+    if (!gameStarted || gameOver || paused) return;
 
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
@@ -1283,7 +1336,7 @@ function setupInput() {
 
   // Prevent scrolling/zooming during play
   window.addEventListener("touchmove", (e) => {
-    if (gameStarted && !gameOver) e.preventDefault();
+    if (gameStarted && !gameOver && !paused) e.preventDefault();
   }, { passive: false });
 }
 
@@ -1303,7 +1356,7 @@ function animate() {
   tickTheme(dt);
   tickBgmDuck();
 
-  if (gameStarted && !gameOver) {
+  if (gameStarted && !gameOver && !paused) {
     speed = Math.min(speed + CFG.speedRamp * dt, CFG.maxSpeed);
     const dz = speed * dt;
     distMoved += dz;
@@ -1522,6 +1575,9 @@ function updateSpawning() {
   if (distMoved - lastSpawnDist < nextSpawnInterval) return;
 
   lastSpawnDist = distMoved;
+  waveIndex++;
+  barrierCooldownWaves = Math.max(0, barrierCooldownWaves - 1);
+  lowGateCooldownWaves = Math.max(0, lowGateCooldownWaves - 1);
 
   // Scale interval slightly with speed (rhythmic beat)
   const speedFactor = THREE.MathUtils.clamp(
@@ -1529,9 +1585,9 @@ function updateSpawning() {
     0,
     1
   );
+  // Professional pacing: faster speed => shorter interval (more stuff)
   nextSpawnInterval =
-    CFG.spawnIntervalBase +
-    speedFactor * 8 +
+    (CFG.spawnIntervalBase - speedFactor * 7.5) +
     Math.random() * CFG.spawnIntervalVariance;
 
   const z = CFG.spawnZ;
@@ -1556,11 +1612,31 @@ function updateSpawning() {
   }
 }
 
-function pickHazardType(speedFactor) {
+function pickHazardType(speedFactor, allowLowGate = true) {
   // Keep early game gentle, add tougher types later.
   let type = "hurdle";
-  if (score > 350 && Math.random() < 0.25 + speedFactor * 0.15) type = "barrier";
-  if (score > 1200 && Math.random() < 0.12 + speedFactor * 0.10) type = "lowGate";
+  const wantBarrier =
+    barrierCooldownWaves === 0 &&
+    score > 350 &&
+    Math.random() < (0.22 + speedFactor * 0.16);
+
+  const wantLowGate =
+    allowLowGate &&
+    lowGateCooldownWaves === 0 &&
+    score > 1200 &&
+    Math.random() < (0.10 + speedFactor * 0.10);
+
+  if (wantLowGate) {
+    type = "lowGate";
+    lowGateCooldownWaves = 4; // prevents spam
+    return type;
+  }
+
+  if (wantBarrier) {
+    type = "barrier";
+    barrierCooldownWaves = 2;
+    return type;
+  }
   return type;
 }
 
@@ -1582,7 +1658,7 @@ function spawnSingleWave(z, speedFactor) {
     if (lane === openLane) continue;
     if (placed >= hazardCount) break;
     const jitter = (Math.random() - 0.5) * 5.5;
-    spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor) });
+    spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor, true) });
     placed++;
   }
 }
@@ -1614,7 +1690,9 @@ function spawnObstacleCluster(baseZ, speedFactor) {
       if (lane === openLane) continue;
       if (placed >= hazardsThisRow) break;
       const jitter = (Math.random() - 0.5) * 3.0;
-      spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor) });
+      // Avoid lowGate in the very first row of a cluster (feels unfair)
+      const allowLowGate = row > 0;
+      spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor, allowLowGate) });
       placed++;
       remaining--;
       if (remaining <= 0) break;
@@ -1663,18 +1741,62 @@ function spawnCoinTrail(laneIndex, z) {
   let currentLane = laneIndex;
 
   for (let i = 0; i < count; i++) {
+    const cz = z - i * CFG.coinTrailSpacingZ;
+
+    // Never place coins through/into obstacles. If blocked, try to hop lanes; otherwise end trail.
+    if (!isCoinSafeAt(currentLane, cz)) {
+      const alt = findSafeCoinLaneNear(currentLane, cz);
+      if (alt === -1) break; // end before obstacle (pro game feel)
+      currentLane = alt;
+      if (!isCoinSafeAt(currentLane, cz)) break;
+    }
+
     // Professional Weaving Trail (20% chance to jump lanes mid-trail)
     if (i > 1 && Math.random() < 0.2 && count > 4) {
       const dir = Math.random() > 0.5 ? 1 : -1;
       const nextLane = (currentLane + dir + 3) % 3;
       // ensure we don't jump into a blockade next turn (rough heuristic)
-      currentLane = nextLane;
+      if (isCoinSafeAt(nextLane, cz)) currentLane = nextLane;
     }
-    spawnCoin(currentLane, z - i * 4);
+
+    spawnCoin(currentLane, cz);
   }
 }
 
 /* Removed old multi-obstacle segment functions as they caused clumping */
+
+function laneIndexFromX(x) {
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < CFG.lanes.length; i++) {
+    const d = Math.abs(x - CFG.lanes[i]);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function isCoinSafeAt(laneIndex, z) {
+  // Check existing obstacles only (current wave obstacles spawn after coins).
+  for (let i = 0; i < obstacles.length; i++) {
+    const o = obstacles[i];
+    const oi = laneIndexFromX(o.position.x);
+    if (oi !== laneIndex) continue;
+    if (Math.abs(o.position.z - z) < CFG.coinObstacleClearZ) return false;
+  }
+  return true;
+}
+
+function findSafeCoinLaneNear(preferredLane, z) {
+  if (isCoinSafeAt(preferredLane, z)) return preferredLane;
+  const candidates = [((preferredLane + 1) % 3), ((preferredLane + 2) % 3)];
+  for (const l of candidates) {
+    if (isCoinSafeAt(l, z)) return l;
+  }
+  return -1;
+}
 
 function spawnObstacle(laneIndex, z, opt) {
   const type = opt?.type || "hurdle";
@@ -1682,6 +1804,12 @@ function spawnObstacle(laneIndex, z, opt) {
   let obj = null;
   let y = 0;
   let scale = 1;
+
+  // Guard: keep obstacles in the same lane from spawning too close (prevents overlaps)
+  const lastZ = lastObstacleZByLane[laneIndex];
+  if (typeof lastZ === "number" && z > lastZ - CFG.minObstacleGapZ) {
+    z = lastZ - CFG.minObstacleGapZ;
+  }
 
   // Optional model choices (only if loaded)
   if (type === "barrier" && modelsReady.barrier) {
@@ -1727,7 +1855,47 @@ function spawnObstacle(laneIndex, z, opt) {
   obj.userData.type = type;
   obj.userData._isModelClone = !!obj.userData._isModelClone;
 
+  // Final guarantee: ensure this obstacle does not overlap any recent obstacle AABBs.
+  // If overlap is detected, push it further back in Z and retry; if still overlapping after retries, skip spawn.
+  let placed = false;
+  for (let attempt = 0; attempt <= CFG.obstacleSpawnMaxRetries; attempt++) {
+    if (attempt > 0) obj.position.z -= CFG.minObstacleGapZ;
+
+    const aabb = new THREE.Box3().setFromObject(obj);
+    let hit = false;
+    for (let i = 0; i < obstacles.length; i++) {
+      const other = obstacles[i];
+      if (!other || !other.visible) continue;
+      // only compare with nearby Z to keep this cheap
+      if (Math.abs(other.position.z - obj.position.z) > CFG.obstacleOverlapCheckWindowZ) continue;
+      const otherAabb = other.userData._aabb || new THREE.Box3().setFromObject(other);
+      other.userData._aabb = otherAabb;
+      if (aabb.intersectsBox(otherAabb)) {
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) {
+      obj.userData._aabb = aabb;
+      placed = true;
+      break;
+    }
+  }
+
+  if (!placed) {
+    // couldn't find a non-overlapping placement; release/remove cleanly
+    if (obj.geometry && (obj.geometry === cache.trainGeo || obj.geometry === cache.barrierGeo || obj.geometry === cache.obstacleGeo)) {
+      if (obj.geometry === cache.trainGeo) pools.train.release(obj);
+      else if (obj.geometry === cache.barrierGeo) pools.barrier.release(obj);
+      else pools.obstacle.release(obj);
+    } else {
+      scene.remove(obj);
+    }
+    return;
+  }
+
   obstacles.push(obj);
+  lastObstacleZByLane[laneIndex] = obj.position.z;
 }
 
 function spawnCoin(laneIndex, z, y = CFG.coinY) {
@@ -1919,6 +2087,7 @@ function jump() {
 function endGame() {
   if (gameOver) return;
   gameOver = true;
+  setPaused(false);
 
   SFX.hit();
   stopBgm();
@@ -1945,6 +2114,7 @@ function restartGame() {
   gameOver = false;
   gameStarted = false;
   countingDown = false;
+  setPaused(false);
 
   if (ui.go) ui.go.classList.add("hidden");
   if (ui.start) ui.start.classList.add("hidden");
@@ -1966,6 +2136,10 @@ function restartGame() {
   distMoved = 0;
   lastSpawnDist = -65;
   nextSpawnInterval = 35;
+  lastObstacleZByLane = [9999, 9999, 9999];
+  waveIndex = 0;
+  barrierCooldownWaves = 0;
+  lowGateCooldownWaves = 0;
   laneHistory = [0, 1, 2];
   shuffle(laneHistory);
   lastLane = 1;

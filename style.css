@@ -292,6 +292,11 @@ canvas {
   transform: translateY(-2px);
 }
 
+/* Pause overlay tweaks */
+#pauseOverlay .panel h2 {
+  color: #fff;
+}
+
 /* =========================
    HINTS
 ========================= */
