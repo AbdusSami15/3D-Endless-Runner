@@ -227,6 +227,8 @@ canvas {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
   pointer-events: none;
 }
 
@@ -271,7 +273,9 @@ canvas {
 }
 
 .icon-btn {
-  width: 52px;
+  min-width: 52px;
+  width: auto;
+  padding: 0 12px;
   height: 52px;
   border-radius: 16px;
   border: 1px solid var(--glass-border);
@@ -442,10 +446,31 @@ canvas {
   }
 }
 
-@media (max-width: 600px) {
-  #hud { top: 16px; left: 16px; right: 16px; }
-  .badge { min-width: 80px; padding: 10px 16px; }
-  .badge .value { font-size: 1.2rem; }
-  .hero h1 { font-size: 3.5rem; }
-  .panel { padding: 32px 24px; }
+@media (max-width: 650px) {
+  #hud {
+    top: 16px;
+    left: 12px;
+    right: 12px;
+    justify-content: center;
+    gap: 8px;
+  }
+  .hud-group {
+    gap: 8px;
+    width: 100%;
+    justify-content: center;
+  }
+  .hud-actions {
+    width: 100%;
+    justify-content: center;
+  }
+  .badge {
+    min-width: 0;
+    flex: 1;
+    padding: 8px 12px;
+  }
+  .badge .value {
+    font-size: 1.1rem;
+  }
+  .hero h1 { font-size: clamp(3rem, 12vw, 4.5rem); }
+  .panel { padding: 32px 20px; }
 }

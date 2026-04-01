@@ -31,12 +31,12 @@ const CFG = {
 
   // Fairness
   maxObstaclesPerWave: 2,
-  maxObstaclesPerCluster: 4,
+  maxObstaclesPerCluster: 3,
   clusterChanceAtMaxSpeed: 0.65,
-  clusterRowSpacingMin: 6.5,
-  clusterRowSpacingMax: 10.5,
+  clusterRowSpacingMin: 9.0,
+  clusterRowSpacingMax: 11.5,
   // Prevent overlapping / wrong order (same-lane Z stacking)
-  minObstacleGapZ: 8.0,
+  minObstacleGapZ: 10.0,
   // Strong guarantee: avoid ANY AABB overlaps on spawn
   obstacleOverlapCheckWindowZ: 28,
   obstacleSpawnMaxRetries: 8,
@@ -55,7 +55,7 @@ const CFG = {
   nearMissCooldown: 0.40,
 
   // Magnet
-  magnetChance: 0.16,
+  magnetChance: 0,
   magnetDuration: 8,
   magnetRadius: 6.5,
   magnetPullSpeed: 26,
@@ -1390,7 +1390,7 @@ function animate() {
     camera.position.y += (Math.random() - 0.5) * s;
   }
 
-  if (mixer) mixer.update(dt);
+  if (mixer && !gameOver && !paused) mixer.update(dt);
   updateParticles(dt);
 
   composer.render();
@@ -1407,14 +1407,9 @@ function updatePlayer(dt) {
     CFG.laneLerp
   );
 
-  // slide squash (visual only)
-  if (isSliding()) {
-    playerVisual.scale.y = THREE.MathUtils.lerp(playerVisual.scale.y, 0.72, 0.22);
-    playerVisual.position.y = THREE.MathUtils.lerp(playerVisual.position.y, -0.15, 0.22);
-  } else {
-    playerVisual.scale.y = THREE.MathUtils.lerp(playerVisual.scale.y, 1.0, 0.22);
-    playerVisual.position.y = THREE.MathUtils.lerp(playerVisual.position.y, 0.0, 0.22);
-  }
+  // visual cleanup
+  playerVisual.scale.y = THREE.MathUtils.lerp(playerVisual.scale.y, 1.0, 0.22);
+  playerVisual.position.y = THREE.MathUtils.lerp(playerVisual.position.y, 0.0, 0.22);
 
   if (!grounded) {
     velY -= CFG.gravity * dt;
@@ -1487,7 +1482,7 @@ function updateCamera(dt) {
 
   camera.lookAt(
     playerRoot.position.x * 0.22,
-    CFG.camLookY + (isSliding() ? -0.2 : 0),
+    CFG.camLookY + (isSliding() ? -0.2 : 0) + playerRoot.position.y * 0.4,
     CFG.camLookZ
   );
 
@@ -1657,14 +1652,14 @@ function spawnSingleWave(z, speedFactor) {
     const lane = lanes[i];
     if (lane === openLane) continue;
     if (placed >= hazardCount) break;
-    const jitter = (Math.random() - 0.5) * 5.5;
+    const jitter = (Math.random() - 0.5) * 2.5;
     spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor, true) });
     placed++;
   }
 }
 
 function spawnObstacleCluster(baseZ, speedFactor) {
-  // Total obstacles across rows is capped at 4.
+  // Total obstacles across rows is capped at 3.
   let remaining = CFG.maxObstaclesPerCluster;
   let row = 0;
   let z = baseZ;
@@ -1675,7 +1670,7 @@ function spawnObstacleCluster(baseZ, speedFactor) {
     if (row === 0) spawnCoinTrail(openLane, z);
 
     // Later rows can be tighter, but still leave an escape lane.
-    const maxThisRow = row === 0 ? 2 : 2;
+    const maxThisRow = row === 0 ? 2 : 1;
     const minThisRow = 1;
     const hazardsThisRow = Math.min(
       remaining,
@@ -1689,7 +1684,7 @@ function spawnObstacleCluster(baseZ, speedFactor) {
       const lane = lanes[i];
       if (lane === openLane) continue;
       if (placed >= hazardsThisRow) break;
-      const jitter = (Math.random() - 0.5) * 3.0;
+      const jitter = (Math.random() - 0.5) * 1.5;
       // Avoid lowGate in the very first row of a cluster (feels unfair)
       const allowLowGate = row > 0;
       spawnObstacle(lane, z + jitter, { type: pickHazardType(speedFactor, allowLowGate) });
@@ -2048,6 +2043,13 @@ function isSliding() {
 function slide() {
   if (gameOver) return;
   if (!gameStarted) return;
+
+  if (!grounded) {
+    // Fast fall
+    velY = -CFG.jumpVelocity * 1.5;
+    SFX.slide();
+    return;
+  }
 
   const now = performance.now() / 1000;
   if (now < slideCooldownUntil) return;
